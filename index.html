@@ -163,6 +163,7 @@ input[type=text],select{font:inherit;color:var(--fg);background:var(--bg);border
           <button type="button" data-fmt="pdf">PDF <small>para imprimir</small></button>
           <button type="button" data-fmt="png">PNG <small>imagen nítida</small></button>
           <button type="button" data-fmt="jpg">JPEG <small>imagen ligera</small></button>
+          <button type="button" data-fmt="json">JSON <small>datos del horario</small></button>
         </div></details>
       <button class="btn primary" id="saveBtn" type="button">Guardar</button>
     </div>
@@ -533,12 +534,30 @@ let dlP=null;const getDl=()=>dlP||(dlP=hasClaude().then(ok=>ok?window.claude.use
 async function snap(){await document.fonts.ready;return html2canvas($('sheet'),{scale:2,backgroundColor:'#ffffff',useCORS:true,windowWidth:1300})}
 const toBlob=(c,type,q)=>new Promise(r=>c.toBlob(r,type,q));
 let lastBlob=null;
+// JSON legible del horario abierto (resumen por materia) + datos crudos para poder recuperarlo
+function scheduleJSON(){
+  const s=cur(),q=qOf(st.q),hs=hoursShown(),DN=['Lunes','Martes','Miércoles','Jueves','Viernes'];
+  const materias=q.subs.map(([nm,hrs],i)=>{const id=q.k+'-'+i,dias=[];
+    DN.forEach((dn,d)=>{let r=0;while(r<hs.length){const c=s.cells[d+'-'+hs[r]];if(!c||c.s!==id){r++;continue}
+      let z=r;while(z<hs.length&&s.cells[d+'-'+hs[z]]&&s.cells[d+'-'+hs[z]].s===id)z++;
+      dias.push({dia:dn,de:hs[r]+':00',a:(hs[z-1]+1)+':00',horas:z-r});r=z}});
+    const a=s.rooms&&s.rooms[id],bd=a&&bOf(a.b);
+    return {materia:nm,horasPlan:hrs,horasSemanaSugeridas:Math.round(hrs/15),horasSemanaAsignadas:dias.reduce((t,x)=>t+x.horas,0),
+      docente:s.teachers[id]||'',edificio:bd?bd.n:'',salon:bd?(a.r==='otro'?(a.o||''):(bd.rooms[+a.r]||[''])[0]):'',aulaEnHoja:roomLabel(a),dias}});
+  return {app:'Horarios IAEV',version:1,exportado:new Date().toISOString(),
+    grupo:'IAEV-PA-'+st.num,generacion:s.bis||'',cuatrimestre:q.es,periodo:PER[st.period][1]+' '+st.year,
+    turno:s.turno==='V'?'Vespertino':'Matutino',tutorDesarrolloHumano:s.tutHD||'',tutorAcademico:s.tutAc||'',
+    materias:materias.filter(m=>m.dias.length||m.docente||m.aulaEnHoja),
+    datos:{num:st.num,q:st.q,period:st.period,year:st.year,sched:clone(s)}};
+}
 async function doExport(fmt){
-  $('expMenu').open=false;toast('Generando '+fmt.toUpperCase()+'…');
+  $('expMenu').open=false;if(fmt!=='json')toast('Generando '+fmt.toUpperCase()+'…');
   let canvas,blob;
   try{
-    canvas=await snap();
-    if(fmt==='png')blob=await toBlob(canvas,'image/png');
+    if(fmt==='json')blob=new Blob([JSON.stringify(scheduleJSON(),null,2)],{type:'application/json'});
+    else canvas=await snap();
+    if(fmt==='json');
+    else if(fmt==='png')blob=await toBlob(canvas,'image/png');
     else if(fmt==='jpg')blob=await toBlob(canvas,'image/jpeg',.92);
     else{
       const {jsPDF}=window.jspdf,w=canvas.width,h=canvas.height,land=w>h;
@@ -557,6 +576,10 @@ async function doExport(fmt){
     try{await dl.save({filename:fname,data:blob});toast('Archivo listo');return}
     catch(e){if(e&&e.code==='declined')return;if(e&&e.code==='rate_limited'){toast('Ya hay una descarga pendiente');return}}
   }
+  if(fmt==='json'){ // sin descargas: copiar el texto
+    try{await navigator.clipboard.writeText(await blob.text());toast('No se pudo descargar; el JSON quedó copiado')}
+    catch(e){toast('No se pudo descargar el JSON aquí')}
+    return}
   // sin descargas disponibles: mostrar la imagen para guardarla a mano
   const m=$('modal'),img=$('mImg');m.hidden=false;img.src=canvas.toDataURL('image/png');img.hidden=false;
   lastBlob=await toBlob(canvas,'image/png');
