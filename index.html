@@ -622,7 +622,7 @@ async function apiSend(method,id,body){
 }
 async function initStore(){
   const fallback=()=>{store=null;setSaved(localList(),'Se guardan en este navegador. Otro equipo o navegador no los verá.')};
-  if(!await hasClaude()){ // en Netlify: función /api/horarios con Netlify Blobs
+  if(!await hasClaude()){ // en Cloudflare: función /api/horarios con KV
     if(await apiLoad(true)){api=true;setInterval(()=>{if(!document.hidden)apiLoad()},30000);
       document.addEventListener('visibilitychange',()=>{if(!document.hidden)apiLoad()});return}
     fallback();return}
